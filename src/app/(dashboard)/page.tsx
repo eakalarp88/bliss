@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Calendar, 
@@ -10,7 +10,8 @@ import {
   Plus,
   Clock,
   List,
-  LayoutGrid
+  LayoutGrid,
+  Loader2
 } from 'lucide-react';
 import { Card, Badge, Button } from '@/components/ui';
 import { getZoneIcon } from '@/lib/utils';
@@ -42,8 +43,12 @@ const timelineHours = Array.from({ length: 13 }, (_, i) => {
 });
 
 export default function HomePage() {
-  const { bookings } = useBookingStore();
+  const { bookings, isLoading, fetchBookings } = useBookingStore();
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
   
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];

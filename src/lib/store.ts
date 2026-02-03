@@ -1,225 +1,408 @@
 'use client';
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { supabase, type DbService, type DbBooking, type DbBookingService } from './supabase';
 
-// Types
+// Frontend types (mapped from DB)
 export interface Service {
   id: string;
   name: string;
   zone: 'hair' | 'nail';
-  duration: number; // in minutes
-  availableFrom: string; // HH:mm - start time for booking
-  availableTo: string; // HH:mm - end time for booking
-  isActive: boolean; // whether the service is active
-  sortOrder: number; // display order
+  duration: number;
+  availableFrom: string;
+  availableTo: string;
+  isActive: boolean;
+  sortOrder: number;
 }
 
 export interface Booking {
   id: string;
-  services: Service[]; // Multiple services in one booking
-  totalDuration: number; // Total duration of all services
+  services: Service[];
+  totalDuration: number;
   zone: 'hair' | 'nail';
-  date: string; // ISO date string
-  time: string; // HH:mm
+  date: string;
+  time: string;
   customerName: string;
   customerPhone: string;
   notes?: string;
-  slipImage?: string; // Base64 or URL of payment slip (for nail zone)
+  slipImage?: string;
   status: 'confirmed' | 'completed' | 'cancelled' | 'no-show';
   channel: 'web' | 'walk-in' | 'line';
   createdAt: string;
 }
 
-// Default services (with available time range)
-// โซนผม: 09:00 - 19:00 | โซนเล็บ: 10:00 - 20:00
-export const defaultServices: Service[] = [
-  // Hair services (09:00 - 19:00)
-  { id: '1', name: 'ตัดผม', zone: 'hair', duration: 30, availableFrom: '09:00', availableTo: '19:00', isActive: true, sortOrder: 1 },
-  { id: '2', name: 'สระ + ไดร์', zone: 'hair', duration: 45, availableFrom: '09:00', availableTo: '19:00', isActive: true, sortOrder: 2 },
-  { id: '3', name: 'ทำสีผม', zone: 'hair', duration: 120, availableFrom: '09:00', availableTo: '17:00', isActive: true, sortOrder: 3 },
-  { id: '4', name: 'ดัดผม', zone: 'hair', duration: 180, availableFrom: '09:00', availableTo: '16:00', isActive: true, sortOrder: 4 },
-  { id: '5', name: 'ยืดผม', zone: 'hair', duration: 150, availableFrom: '09:00', availableTo: '16:30', isActive: false, sortOrder: 5 },
-  { id: '6', name: 'ทรีทเม้นท์', zone: 'hair', duration: 45, availableFrom: '09:00', availableTo: '19:00', isActive: true, sortOrder: 6 },
-  // Nail services (10:00 - 20:00)
-  { id: '7', name: 'ทำเล็บเจล', zone: 'nail', duration: 60, availableFrom: '10:00', availableTo: '20:00', isActive: true, sortOrder: 1 },
-  { id: '8', name: 'ทำเล็บสีธรรมดา', zone: 'nail', duration: 45, availableFrom: '10:00', availableTo: '20:00', isActive: true, sortOrder: 2 },
-  { id: '9', name: 'ต่อเล็บ', zone: 'nail', duration: 90, availableFrom: '10:00', availableTo: '18:30', isActive: true, sortOrder: 3 },
-  { id: '10', name: 'สปามือ', zone: 'nail', duration: 45, availableFrom: '10:00', availableTo: '20:00', isActive: true, sortOrder: 4 },
-  { id: '11', name: 'สปาเท้า', zone: 'nail', duration: 60, availableFrom: '10:00', availableTo: '20:00', isActive: true, sortOrder: 5 },
-  { id: '12', name: 'ทำเล็บเท้า', zone: 'nail', duration: 45, availableFrom: '10:00', availableTo: '20:00', isActive: true, sortOrder: 6 },
-];
+// Map DB service to frontend service
+const mapDbService = (db: DbService): Service => ({
+  id: db.id,
+  name: db.name,
+  zone: db.zone,
+  duration: db.duration,
+  availableFrom: db.available_from,
+  availableTo: db.available_to,
+  isActive: db.is_active,
+  sortOrder: db.sort_order,
+});
+
+// Map DB booking to frontend booking
+const mapDbBooking = (db: DbBooking, services: Service[]): Booking => ({
+  id: db.id,
+  services,
+  totalDuration: db.total_duration,
+  zone: db.zone,
+  date: db.date,
+  time: db.time,
+  customerName: db.customer_name,
+  customerPhone: db.customer_phone,
+  notes: db.notes || undefined,
+  slipImage: db.slip_image || undefined,
+  status: db.status,
+  channel: db.channel,
+  createdAt: db.created_at,
+});
 
 // Store interface
 interface BookingStore {
-  bookings: Booking[];
   services: Service[];
-  
-  // Booking Actions
-  addBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => string;
-  updateBooking: (id: string, updates: Partial<Booking>) => void;
-  cancelBooking: (id: string) => void;
-  completeBooking: (id: string) => void;
-  getBookingsByDate: (date: string) => Booking[];
+  bookings: Booking[];
+  isLoading: boolean;
+  error: string | null;
+
+  // Fetch data
+  fetchServices: () => Promise<void>;
+  fetchBookings: () => Promise<void>;
+
+  // Service actions
+  addService: (service: Omit<Service, 'id'>) => Promise<string | null>;
+  updateService: (id: string, updates: Partial<Service>) => Promise<void>;
+  toggleServiceActive: (id: string) => Promise<void>;
+  reorderServices: (zone: 'hair' | 'nail', orderedIds: string[]) => Promise<void>;
+
+  // Booking actions
+  addBooking: (booking: Omit<Booking, 'id' | 'createdAt'>) => Promise<string | null>;
+  updateBooking: (id: string, updates: Partial<Booking>) => Promise<void>;
+  cancelBooking: (id: string) => Promise<void>;
+  completeBooking: (id: string) => Promise<void>;
   getBookingById: (id: string) => Booking | undefined;
-  
-  // Service Actions
-  addService: (service: Omit<Service, 'id'>) => string;
-  updateService: (id: string, updates: Partial<Service>) => void;
-  deleteService: (id: string) => void;
-  toggleServiceActive: (id: string) => void;
-  reorderServices: (zone: 'hair' | 'nail', orderedIds: string[]) => void;
   getActiveServices: () => Service[];
 }
 
 // Generate unique ID
 const generateId = () => `BK${Date.now().toString(36).toUpperCase()}`;
 
-// Create store with persistence
-export const useBookingStore = create<BookingStore>()(
-  persist(
-    (set, get) => ({
-      bookings: [],
-      services: defaultServices,
+export const useBookingStore = create<BookingStore>((set, get) => ({
+  services: [],
+  bookings: [],
+  isLoading: false,
+  error: null,
 
-      addBooking: (bookingData) => {
-        const id = generateId();
-        const newBooking: Booking = {
-          ...bookingData,
-          id,
-          createdAt: new Date().toISOString(),
-        };
-        set((state) => ({
-          bookings: [...state.bookings, newBooking],
-        }));
-        return id;
-      },
+  fetchServices: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .order('sort_order');
 
-      updateBooking: (id, updates) => {
-        set((state) => ({
-          bookings: state.bookings.map((b) =>
-            b.id === id ? { ...b, ...updates } : b
-          ),
-        }));
-      },
+      if (error) throw error;
 
-      cancelBooking: (id) => {
-        set((state) => ({
-          bookings: state.bookings.map((b) =>
-            b.id === id ? { ...b, status: 'cancelled' } : b
-          ),
-        }));
-      },
-
-      completeBooking: (id) => {
-        set((state) => ({
-          bookings: state.bookings.map((b) =>
-            b.id === id ? { ...b, status: 'completed' } : b
-          ),
-        }));
-      },
-
-      getBookingsByDate: (date) => {
-        return get().bookings.filter(
-          (b) => b.date === date && b.status !== 'cancelled'
-        );
-      },
-
-      getBookingById: (id) => {
-        return get().bookings.find((b) => b.id === id);
-      },
-
-      // Service Actions
-      addService: (serviceData) => {
-        const id = `SV${Date.now().toString(36).toUpperCase()}`;
-        const newService: Service = {
-          ...serviceData,
-          id,
-        };
-        set((state) => ({
-          services: [...state.services, newService],
-        }));
-        return id;
-      },
-
-      updateService: (id, updates) => {
-        set((state) => ({
-          services: state.services.map((s) =>
-            s.id === id ? { ...s, ...updates } : s
-          ),
-        }));
-      },
-
-      deleteService: (id) => {
-        set((state) => ({
-          services: state.services.filter((s) => s.id !== id),
-        }));
-      },
-
-      toggleServiceActive: (id) => {
-        set((state) => ({
-          services: state.services.map((s) =>
-            s.id === id ? { ...s, isActive: !s.isActive } : s
-          ),
-        }));
-      },
-
-      reorderServices: (zone, orderedIds) => {
-        set((state) => ({
-          services: state.services.map((s) => {
-            if (s.zone === zone) {
-              const newOrder = orderedIds.indexOf(s.id);
-              return { ...s, sortOrder: newOrder >= 0 ? newOrder + 1 : s.sortOrder };
-            }
-            return s;
-          }),
-        }));
-      },
-
-      getActiveServices: () => {
-        return get().services.filter((s) => s.isActive);
-      },
-    }),
-    {
-      name: 'bliss-bookings',
+      const services = (data as DbService[]).map(mapDbService);
+      set({ services, isLoading: false });
+    } catch (error: any) {
+      console.error('Error fetching services:', error);
+      set({ error: error.message, isLoading: false });
     }
-  )
-);
+  },
 
-// Convert time string to minutes
+  fetchBookings: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      // Fetch bookings
+      const { data: bookingsData, error: bookingsError } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (bookingsError) throw bookingsError;
+
+      // Fetch booking services
+      const { data: bookingServicesData, error: bsError } = await supabase
+        .from('booking_services')
+        .select('*');
+
+      if (bsError) throw bsError;
+
+      // Map bookings with their services
+      const bookings = (bookingsData as DbBooking[]).map((db) => {
+        const bookingServices = (bookingServicesData as DbBookingService[])
+          .filter((bs) => bs.booking_id === db.id)
+          .map((bs) => ({
+            id: bs.service_id || bs.id,
+            name: bs.service_name,
+            zone: db.zone,
+            duration: bs.service_duration,
+            availableFrom: '09:00',
+            availableTo: '20:00',
+            isActive: true,
+            sortOrder: 1,
+          }));
+
+        return mapDbBooking(db, bookingServices);
+      });
+
+      set({ bookings, isLoading: false });
+    } catch (error: any) {
+      console.error('Error fetching bookings:', error);
+      set({ error: error.message, isLoading: false });
+    }
+  },
+
+  addService: async (serviceData) => {
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .insert({
+          name: serviceData.name,
+          zone: serviceData.zone,
+          duration: serviceData.duration,
+          available_from: serviceData.availableFrom,
+          available_to: serviceData.availableTo,
+          is_active: serviceData.isActive,
+          sort_order: serviceData.sortOrder,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newService = mapDbService(data as DbService);
+      set((state) => ({ services: [...state.services, newService] }));
+      return newService.id;
+    } catch (error: any) {
+      console.error('Error adding service:', error);
+      set({ error: error.message });
+      return null;
+    }
+  },
+
+  updateService: async (id, updates) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.zone !== undefined) dbUpdates.zone = updates.zone;
+      if (updates.duration !== undefined) dbUpdates.duration = updates.duration;
+      if (updates.availableFrom !== undefined) dbUpdates.available_from = updates.availableFrom;
+      if (updates.availableTo !== undefined) dbUpdates.available_to = updates.availableTo;
+      if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+      if (updates.sortOrder !== undefined) dbUpdates.sort_order = updates.sortOrder;
+
+      const { error } = await supabase
+        .from('services')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        services: state.services.map((s) =>
+          s.id === id ? { ...s, ...updates } : s
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error updating service:', error);
+      set({ error: error.message });
+    }
+  },
+
+  toggleServiceActive: async (id) => {
+    const service = get().services.find((s) => s.id === id);
+    if (!service) return;
+
+    try {
+      const { error } = await supabase
+        .from('services')
+        .update({ is_active: !service.isActive })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        services: state.services.map((s) =>
+          s.id === id ? { ...s, isActive: !s.isActive } : s
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error toggling service:', error);
+      set({ error: error.message });
+    }
+  },
+
+  reorderServices: async (zone, orderedIds) => {
+    try {
+      // Update each service's sort order
+      const updates = orderedIds.map((id, index) =>
+        supabase
+          .from('services')
+          .update({ sort_order: index + 1 })
+          .eq('id', id)
+      );
+
+      await Promise.all(updates);
+
+      set((state) => ({
+        services: state.services.map((s) => {
+          if (s.zone === zone) {
+            const newOrder = orderedIds.indexOf(s.id);
+            return { ...s, sortOrder: newOrder >= 0 ? newOrder + 1 : s.sortOrder };
+          }
+          return s;
+        }),
+      }));
+    } catch (error: any) {
+      console.error('Error reordering services:', error);
+      set({ error: error.message });
+    }
+  },
+
+  addBooking: async (bookingData) => {
+    try {
+      const id = generateId();
+
+      // Insert booking
+      const { error: bookingError } = await supabase.from('bookings').insert({
+        id,
+        zone: bookingData.zone,
+        date: bookingData.date,
+        time: bookingData.time,
+        customer_name: bookingData.customerName,
+        customer_phone: bookingData.customerPhone,
+        notes: bookingData.notes || null,
+        slip_image: bookingData.slipImage || null,
+        status: bookingData.status,
+        channel: bookingData.channel,
+        total_duration: bookingData.totalDuration,
+      });
+
+      if (bookingError) throw bookingError;
+
+      // Insert booking services
+      const bookingServices = bookingData.services.map((s) => ({
+        booking_id: id,
+        service_id: s.id,
+        service_name: s.name,
+        service_duration: s.duration,
+      }));
+
+      const { error: bsError } = await supabase
+        .from('booking_services')
+        .insert(bookingServices);
+
+      if (bsError) throw bsError;
+
+      const newBooking: Booking = {
+        ...bookingData,
+        id,
+        createdAt: new Date().toISOString(),
+      };
+
+      set((state) => ({ bookings: [newBooking, ...state.bookings] }));
+      return id;
+    } catch (error: any) {
+      console.error('Error adding booking:', error);
+      set({ error: error.message });
+      return null;
+    }
+  },
+
+  updateBooking: async (id, updates) => {
+    try {
+      const dbUpdates: any = {};
+      if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+      const { error } = await supabase
+        .from('bookings')
+        .update(dbUpdates)
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        bookings: state.bookings.map((b) =>
+          b.id === id ? { ...b, ...updates } : b
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error updating booking:', error);
+      set({ error: error.message });
+    }
+  },
+
+  cancelBooking: async (id) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        bookings: state.bookings.map((b) =>
+          b.id === id ? { ...b, status: 'cancelled' } : b
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error cancelling booking:', error);
+      set({ error: error.message });
+    }
+  },
+
+  completeBooking: async (id) => {
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({ status: 'completed' })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      set((state) => ({
+        bookings: state.bookings.map((b) =>
+          b.id === id ? { ...b, status: 'completed' } : b
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error completing booking:', error);
+      set({ error: error.message });
+    }
+  },
+
+  getBookingById: (id) => {
+    return get().bookings.find((b) => b.id === id);
+  },
+
+  getActiveServices: () => {
+    return get().services.filter((s) => s.isActive);
+  },
+}));
+
+// Helper functions for time slot availability
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 }
 
-// Convert minutes to time string
 function minutesToTime(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
-// Get all time slots blocked by a booking (based on total duration)
-function getBlockedTimeSlots(booking: Booking, slotInterval: number = 30): string[] {
-  const startMinutes = timeToMinutes(booking.time);
-  const duration = booking.totalDuration;
-  const slots: string[] = [];
-  
-  // Block all slots from start time to end of service
-  for (let m = startMinutes; m < startMinutes + duration; m += slotInterval) {
-    slots.push(minutesToTime(m));
-  }
-  
-  return slots;
-}
-
-// Zone capacity (how many concurrent bookings)
 const ZONE_CAPACITY: Record<'hair' | 'nail', number> = {
-  hair: 1, // 1 staff = 1 concurrent booking
-  nail: 2, // 2 staff = 2 concurrent bookings
+  hair: 1,
+  nail: 2,
 };
 
-// Helper to check if time slot is available (considering duration and capacity)
 export function isTimeSlotAvailable(
   bookings: Booking[],
   date: string,
@@ -231,29 +414,25 @@ export function isTimeSlotAvailable(
   const activeBookings = bookings.filter(
     (b) => b.date === date && b.zone === zone && b.status !== 'cancelled'
   );
-  
+
   const newStartMinutes = timeToMinutes(time);
   const newEndMinutes = newStartMinutes + serviceDuration;
-  
-  // Count how many bookings overlap with the requested time range
+
   let overlappingCount = 0;
-  
+
   for (const booking of activeBookings) {
     const bookingStartMinutes = timeToMinutes(booking.time);
     const bookingEndMinutes = bookingStartMinutes + booking.totalDuration;
-    
-    // Check if there's any overlap
     const hasOverlap = newStartMinutes < bookingEndMinutes && newEndMinutes > bookingStartMinutes;
-    
+
     if (hasOverlap) {
       overlappingCount++;
     }
   }
-  
+
   return overlappingCount < capacity;
 }
 
-// Helper to get unavailable times for a date, zone, and service duration
 export function getUnavailableTimes(
   bookings: Booking[],
   date: string,
@@ -265,40 +444,34 @@ export function getUnavailableTimes(
   const activeBookings = bookings.filter(
     (b) => b.date === date && b.zone === zone && b.status !== 'cancelled'
   );
-  
-  // Generate all possible time slots (8:00 - 22:00)
+
   const allSlots: string[] = [];
   for (let m = 8 * 60; m < 22 * 60; m += slotInterval) {
     allSlots.push(minutesToTime(m));
   }
-  
-  // Check each slot
+
   const unavailableSlots: string[] = [];
-  
+
   for (const slot of allSlots) {
     const slotStartMinutes = timeToMinutes(slot);
     const slotEndMinutes = slotStartMinutes + serviceDuration;
-    
-    // Count overlapping bookings for this time slot
+
     let overlappingCount = 0;
-    
+
     for (const booking of activeBookings) {
       const bookingStartMinutes = timeToMinutes(booking.time);
       const bookingEndMinutes = bookingStartMinutes + booking.totalDuration;
-      
-      // Check if the new service would overlap with existing booking
       const hasOverlap = slotStartMinutes < bookingEndMinutes && slotEndMinutes > bookingStartMinutes;
-      
+
       if (hasOverlap) {
         overlappingCount++;
       }
     }
-    
-    // If at capacity, mark as unavailable
+
     if (overlappingCount >= capacity) {
       unavailableSlots.push(slot);
     }
   }
-  
+
   return unavailableSlots;
 }

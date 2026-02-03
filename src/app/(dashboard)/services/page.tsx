@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -71,11 +71,15 @@ const timeOptions = [
 type Zone = 'all' | 'hair' | 'nail';
 
 export default function ServicesPage() {
-  const { services, updateService, addService, toggleServiceActive, reorderServices } = useBookingStore();
+  const { services, updateService, addService, toggleServiceActive, reorderServices, fetchServices } = useBookingStore();
   const [filterZone, setFilterZone] = useState<Zone>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   // DnD sensors
   const sensors = useSensors(

@@ -39,8 +39,13 @@ const allTimeSlots = generateTimeSlots(8, 22, 30);
 
 export default function CustomerBookingPage() {
   const router = useRouter();
-  const { services, bookings, addBooking } = useBookingStore();
+  const { services, bookings, addBooking, fetchServices, fetchBookings } = useBookingStore();
   const [step, setStep] = useState(1);
+  
+  useEffect(() => {
+    fetchServices();
+    fetchBookings();
+  }, [fetchServices, fetchBookings]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -212,7 +217,7 @@ export default function CustomerBookingPage() {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       // Add booking to store
-      const bookingId = addBooking({
+      const bookingId = await addBooking({
         services: selectedServices,
         totalDuration,
         zone: selectedZone,
@@ -225,6 +230,11 @@ export default function CustomerBookingPage() {
         status: 'confirmed',
         channel: 'web',
       });
+      
+      if (!bookingId) {
+        setSubmitError('เกิดข้อผิดพลาดในการจอง กรุณาลองใหม่');
+        return;
+      }
       
       // Store for success page (with SSR check)
       if (typeof window !== 'undefined') {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
 import { 
   Plus, 
@@ -43,10 +43,14 @@ const getBookingDuration = (booking: Booking): number => {
 };
 
 export default function BookingsPage() {
-  const { bookings, completeBooking, cancelBooking } = useBookingStore();
+  const { bookings, completeBooking, cancelBooking, fetchBookings } = useBookingStore();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [filterZone, setFilterZone] = useState<'all' | 'hair' | 'nail'>('all');
+
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
 
   // Format date for comparison
   const selectedDateStr = selectedDate.toISOString().split('T')[0];
