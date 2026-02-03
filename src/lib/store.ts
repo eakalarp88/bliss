@@ -1,9 +1,49 @@
 'use client';
 
 import { create } from 'zustand';
-import { supabase, type DbService, type DbBooking, type DbBookingService } from './supabase';
+import { supabase, type DbService, type DbBooking, type DbBookingService, type DbStaff, type DbStaffSchedule } from './supabase';
 
 // Frontend types (mapped from DB)
+export interface Staff {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  role: string;
+  salaryBase: number;
+  commissionEnabled: boolean;
+  isActive: boolean;
+}
+
+export interface StaffSchedule {
+  id: string;
+  staffId: string;
+  date: string;
+  isDayOff: boolean;
+  note: string | null;
+}
+
+// Map DB staff to frontend staff
+const mapDbStaff = (db: DbStaff): Staff => ({
+  id: db.id,
+  name: db.name,
+  phone: db.phone,
+  email: db.email,
+  role: db.role,
+  salaryBase: db.salary_base,
+  commissionEnabled: db.commission_enabled,
+  isActive: db.is_active,
+});
+
+// Map DB staff schedule to frontend
+const mapDbStaffSchedule = (db: DbStaffSchedule): StaffSchedule => ({
+  id: db.id,
+  staffId: db.staff_id,
+  date: db.date,
+  isDayOff: db.is_day_off,
+  note: db.note,
+});
+
 export interface Service {
   id: string;
   name: string;
@@ -64,12 +104,16 @@ const mapDbBooking = (db: DbBooking, services: Service[]): Booking => ({
 interface BookingStore {
   services: Service[];
   bookings: Booking[];
+  staff: Staff[];
+  staffSchedules: StaffSchedule[];
   isLoading: boolean;
   error: string | null;
 
   // Fetch data
   fetchServices: () => Promise<void>;
   fetchBookings: () => Promise<void>;
+  fetchStaff: () => Promise<void>;
+  fetchStaffSchedules: () => Promise<void>;
 
   // Service actions
   addService: (service: Omit<Service, 'id'>) => Promise<string | null>;
@@ -84,6 +128,12 @@ interface BookingStore {
   completeBooking: (id: string) => Promise<void>;
   getBookingById: (id: string) => Booking | undefined;
   getActiveServices: () => Service[];
+
+  // Staff schedule actions
+  addStaffDayOff: (staffId: string, date: string, note?: string) => Promise<void>;
+  removeStaffDayOff: (staffId: string, date: string) => Promise<void>;
+  getZoneCapacity: (zone: 'hair' | 'nail', date: string) => number;
+  getStaffDaysOff: (staffId: string) => string[];
 }
 
 // Generate unique ID
@@ -92,8 +142,43 @@ const generateId = () => `BK${Date.now().toString(36).toUpperCase()}`;
 export const useBookingStore = create<BookingStore>((set, get) => ({
   services: [],
   bookings: [],
+  staff: [],
+  staffSchedules: [],
   isLoading: false,
   error: null,
+
+  fetchStaff: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .order('created_at');
+
+      if (error) throw error;
+
+      const staff = (data as DbStaff[]).map(mapDbStaff);
+      set({ staff });
+    } catch (error: any) {
+      console.error('Error fetching staff:', error);
+      set({ error: error.message });
+    }
+  },
+
+  fetchStaffSchedules: async () => {
+    try {
+      const { data, error } = await supabase
+        .from('staff_schedules')
+        .select('*');
+
+      if (error) throw error;
+
+      const staffSchedules = (data as DbStaffSchedule[]).map(mapDbStaffSchedule);
+      set({ staffSchedules });
+    } catch (error: any) {
+      console.error('Error fetching staff schedules:', error);
+      set({ error: error.message });
+    }
+  },
 
   fetchServices: async () => {
     set({ isLoading: true, error: null });
@@ -384,6 +469,79 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
   getActiveServices: () => {
     return get().services.filter((s) => s.isActive);
   },
+
+  addStaffDayOff: async (staffId, date, note) => {
+    try {
+      const { data, error } = await supabase
+        .from('staff_schedules')
+        .insert({
+          staff_id: staffId,
+          date,
+          is_day_off: true,
+          note: note || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newSchedule = mapDbStaffSchedule(data as DbStaffSchedule);
+      set((state) => ({
+        staffSchedules: [...state.staffSchedules, newSchedule],
+      }));
+    } catch (error: any) {
+      console.error('Error adding staff day off:', error);
+      set({ error: error.message });
+    }
+  },
+
+  removeStaffDayOff: async (staffId, date) => {
+    try {
+      const { error } = await supabase
+        .from('staff_schedules')
+        .delete()
+        .eq('staff_id', staffId)
+        .eq('date', date);
+
+      if (error) throw error;
+
+      set((state) => ({
+        staffSchedules: state.staffSchedules.filter(
+          (s) => !(s.staffId === staffId && s.date === date)
+        ),
+      }));
+    } catch (error: any) {
+      console.error('Error removing staff day off:', error);
+      set({ error: error.message });
+    }
+  },
+
+  getZoneCapacity: (zone, date) => {
+    const { staff, staffSchedules } = get();
+    
+    // Get active staff in this zone
+    const zoneStaff = staff.filter(
+      (s) => s.isActive && s.role === zone
+    );
+    
+    // Get staff who have day off on this date
+    const staffOnDayOff = staffSchedules
+      .filter((s) => s.date === date && s.isDayOff)
+      .map((s) => s.staffId);
+    
+    // Count available staff
+    const availableStaff = zoneStaff.filter(
+      (s) => !staffOnDayOff.includes(s.id)
+    );
+    
+    return availableStaff.length;
+  },
+
+  getStaffDaysOff: (staffId) => {
+    return get().staffSchedules
+      .filter((s) => s.staffId === staffId && s.isDayOff)
+      .map((s) => s.date);
+  },
 }));
 
 // Helper functions for time slot availability
@@ -398,7 +556,8 @@ function minutesToTime(minutes: number): string {
   return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 }
 
-const ZONE_CAPACITY: Record<'hair' | 'nail', number> = {
+// Default capacity when no staff data available
+const DEFAULT_ZONE_CAPACITY: Record<'hair' | 'nail', number> = {
   hair: 1,
   nail: 2,
 };
@@ -408,9 +567,15 @@ export function isTimeSlotAvailable(
   date: string,
   time: string,
   zone: 'hair' | 'nail',
-  serviceDuration: number
+  serviceDuration: number,
+  capacity?: number
 ): boolean {
-  const capacity = ZONE_CAPACITY[zone];
+  // Use provided capacity or default
+  const zoneCapacity = capacity ?? DEFAULT_ZONE_CAPACITY[zone];
+  
+  // If no staff available, slot is not available
+  if (zoneCapacity <= 0) return false;
+  
   const activeBookings = bookings.filter(
     (b) => b.date === date && b.zone === zone && b.status !== 'cancelled'
   );
@@ -430,7 +595,7 @@ export function isTimeSlotAvailable(
     }
   }
 
-  return overlappingCount < capacity;
+  return overlappingCount < zoneCapacity;
 }
 
 export function getUnavailableTimes(
@@ -438,9 +603,12 @@ export function getUnavailableTimes(
   date: string,
   zone: 'hair' | 'nail',
   serviceDuration: number = 30,
-  slotInterval: number = 30
+  slotInterval: number = 30,
+  capacity?: number
 ): string[] {
-  const capacity = ZONE_CAPACITY[zone];
+  // Use provided capacity or default
+  const zoneCapacity = capacity ?? DEFAULT_ZONE_CAPACITY[zone];
+  
   const activeBookings = bookings.filter(
     (b) => b.date === date && b.zone === zone && b.status !== 'cancelled'
   );
@@ -449,6 +617,9 @@ export function getUnavailableTimes(
   for (let m = 8 * 60; m < 22 * 60; m += slotInterval) {
     allSlots.push(minutesToTime(m));
   }
+
+  // If no staff available, all slots are unavailable
+  if (zoneCapacity <= 0) return allSlots;
 
   const unavailableSlots: string[] = [];
 
@@ -468,7 +639,7 @@ export function getUnavailableTimes(
       }
     }
 
-    if (overlappingCount >= capacity) {
+    if (overlappingCount >= zoneCapacity) {
       unavailableSlots.push(slot);
     }
   }

@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Search, 
   Phone,
-  Mail,
   Edit,
   ToggleLeft,
   ToggleRight,
@@ -13,24 +12,17 @@ import {
   Crown,
   Scissors,
   Sparkles,
-  Loader2
+  Loader2,
+  Calendar,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Avatar, Modal } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency, formatPhone, getRoleText } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
-
-// Staff type
-interface Staff {
-  id: string;
-  name: string;
-  phone: string;
-  email: string | null;
-  role: string;
-  salary_base: number;
-  commission_enabled: boolean;
-  is_active: boolean;
-}
+import { useBookingStore, type Staff } from '@/lib/store';
 
 const roleIcons: Record<string, React.ReactNode> = {
   owner: <Crown className="w-4 h-4 text-amber-500" />,
@@ -48,18 +40,43 @@ const roleBadgeVariants: Record<string, 'warning' | 'info' | 'hair' | 'nail' | '
   reception: 'success',
 };
 
+// Local Staff type for form (with snake_case for DB)
+interface LocalStaff {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  role: string;
+  salary_base: number;
+  commission_enabled: boolean;
+  is_active: boolean;
+}
+
 export default function StaffPage() {
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const { 
+    staffSchedules, 
+    fetchStaffSchedules, 
+    addStaffDayOff, 
+    removeStaffDayOff,
+    getStaffDaysOff
+  } = useBookingStore();
+  
+  const [staff, setStaff] = useState<LocalStaff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+  const [editingStaff, setEditingStaff] = useState<LocalStaff | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+  
+  // Schedule modal state
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<LocalStaff | null>(null);
 
   // Fetch staff from Supabase
   useEffect(() => {
     fetchStaff();
-  }, []);
+    fetchStaffSchedules();
+  }, [fetchStaffSchedules]);
 
   const fetchStaff = async () => {
     setIsLoading(true);
@@ -107,7 +124,7 @@ export default function StaffPage() {
     }
   };
 
-  const handleEdit = (staffMember: Staff) => {
+  const handleEdit = (staffMember: LocalStaff) => {
     setEditingStaff(staffMember);
     setIsModalOpen(true);
   };
@@ -117,7 +134,12 @@ export default function StaffPage() {
     setIsModalOpen(true);
   };
 
-  const handleSave = async (staffData: Omit<Staff, 'id' | 'is_active'>) => {
+  const handleSchedule = (staffMember: LocalStaff) => {
+    setSelectedStaff(staffMember);
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleSave = async (staffData: Omit<LocalStaff, 'id' | 'is_active'>) => {
     try {
       if (editingStaff) {
         // Update existing staff
@@ -148,8 +170,7 @@ export default function StaffPage() {
       setIsModalOpen(false);
     } catch (error: unknown) {
       console.error('Error saving staff:', error);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const err = error as any;
+      const err = error as { message?: string; code?: string };
       const errorMessage = err?.message || err?.code || JSON.stringify(error);
       alert('เกิดข้อผิดพลาด: ' + errorMessage);
     }
@@ -213,65 +234,78 @@ export default function StaffPage() {
 
       {/* Staff List */}
       <div className="space-y-3">
-        {filteredStaff.map((staffMember) => (
-          <Card 
-            key={staffMember.id}
-            className={`transition-opacity ${!staffMember.is_active ? 'opacity-50' : ''}`}
-            padding="md"
-          >
-            <div className="flex items-start gap-4">
-              {/* Avatar */}
-              <Avatar name={staffMember.name} size="lg" />
+        {filteredStaff.map((staffMember) => {
+          const daysOff = getStaffDaysOff(staffMember.id);
+          const upcomingDaysOff = daysOff.filter(d => d >= new Date().toISOString().split('T')[0]).length;
+          
+          return (
+            <Card 
+              key={staffMember.id}
+              className={`transition-opacity ${!staffMember.is_active ? 'opacity-50' : ''}`}
+              padding="md"
+            >
+              <div className="flex items-start gap-4">
+                {/* Avatar */}
+                <Avatar name={staffMember.name} size="lg" />
 
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-semibold text-lg">{staffMember.name}</p>
-                  <Badge variant={roleBadgeVariants[staffMember.role] || 'info'} size="sm">
-                    {roleIcons[staffMember.role]}
-                    <span className="ml-1">{getRoleText(staffMember.role)}</span>
-                  </Badge>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-semibold text-lg">{staffMember.name}</p>
+                    <Badge variant={roleBadgeVariants[staffMember.role] || 'info'} size="sm">
+                      {roleIcons[staffMember.role]}
+                      <span className="ml-1">{getRoleText(staffMember.role)}</span>
+                    </Badge>
+                  </div>
+                  
+                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <Phone className="w-4 h-4" />
+                    {formatPhone(staffMember.phone)}
+                  </p>
+
+                  <div className="flex items-center gap-4 mt-2 text-sm">
+                    <span>เงินเดือน: <strong>{formatCurrency(staffMember.salary_base)}</strong></span>
+                    {upcomingDaysOff > 0 && (
+                      <span className="text-orange-500 flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        วันหยุด {upcomingDaysOff} วัน
+                      </span>
+                    )}
+                  </div>
                 </div>
-                
-                <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                  <Phone className="w-4 h-4" />
-                  {formatPhone(staffMember.phone)}
-                </p>
 
-                <div className="flex items-center gap-4 mt-2 text-sm">
-                  <span>เงินเดือน: <strong>{formatCurrency(staffMember.salary_base)}</strong></span>
-                  <span className={`flex items-center gap-1 ${
-                    staffMember.commission_enabled ? 'text-success' : 'text-muted-foreground'
-                  }`}>
-                    คอมมิชชั่น: {staffMember.commission_enabled ? 'เปิด' : 'ปิด'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => handleEdit(staffMember)}
-                  className="p-2 rounded-lg hover:bg-beige-100 transition-colors"
-                >
-                  <Edit className="w-5 h-5 text-muted-foreground" />
-                </button>
-                {staffMember.role !== 'owner' && (
+                {/* Actions */}
+                <div className="flex flex-col gap-2">
                   <button
-                    onClick={() => toggleStaffStatus(staffMember.id)}
+                    onClick={() => handleSchedule(staffMember)}
+                    className="p-2 rounded-lg hover:bg-beige-100 transition-colors"
+                    title="จัดการวันหยุด"
+                  >
+                    <Calendar className="w-5 h-5 text-orange-500" />
+                  </button>
+                  <button
+                    onClick={() => handleEdit(staffMember)}
                     className="p-2 rounded-lg hover:bg-beige-100 transition-colors"
                   >
-                    {staffMember.is_active ? (
-                      <ToggleRight className="w-6 h-6 text-success" />
-                    ) : (
-                      <ToggleLeft className="w-6 h-6 text-muted-foreground" />
-                    )}
+                    <Edit className="w-5 h-5 text-muted-foreground" />
                   </button>
-                )}
+                  {staffMember.role !== 'owner' && (
+                    <button
+                      onClick={() => toggleStaffStatus(staffMember.id)}
+                      className="p-2 rounded-lg hover:bg-beige-100 transition-colors"
+                    >
+                      {staffMember.is_active ? (
+                        <ToggleRight className="w-6 h-6 text-success" />
+                      ) : (
+                        <ToggleLeft className="w-6 h-6 text-muted-foreground" />
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
       </div>
 
       {/* Add/Edit Modal */}
@@ -286,6 +320,21 @@ export default function StaffPage() {
           onCancel={() => setIsModalOpen(false)}
         />
       </Modal>
+
+      {/* Schedule Modal */}
+      <Modal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        title={`จัดการวันหยุด - ${selectedStaff?.name || ''}`}
+      >
+        {selectedStaff && (
+          <ScheduleCalendar
+            staffId={selectedStaff.id}
+            staffName={selectedStaff.name}
+            onClose={() => setIsScheduleModalOpen(false)}
+          />
+        )}
+      </Modal>
     </div>
   );
 }
@@ -296,8 +345,8 @@ function StaffForm({
   onSave, 
   onCancel 
 }: { 
-  staff: Staff | null;
-  onSave: (data: Omit<Staff, 'id' | 'is_active'>) => void;
+  staff: LocalStaff | null;
+  onSave: (data: Omit<LocalStaff, 'id' | 'is_active'>) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(staff?.name || '');
@@ -349,14 +398,6 @@ function StaffForm({
         onChange={(e) => setPhone(e.target.value)}
         placeholder="08X-XXX-XXXX"
         leftIcon={<Phone className="w-5 h-5" />}
-      />
-
-      <Input
-        label="อีเมล (ไม่บังคับ)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="email@example.com"
-        leftIcon={<Mail className="w-5 h-5" />}
       />
 
       <div>
@@ -412,6 +453,221 @@ function StaffForm({
           บันทึก
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Schedule Calendar Component
+function ScheduleCalendar({ 
+  staffId, 
+  staffName,
+  onClose 
+}: { 
+  staffId: string;
+  staffName: string;
+  onClose: () => void;
+}) {
+  const { staffSchedules, addStaffDayOff, removeStaffDayOff } = useBookingStore();
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Get days off for this staff
+  const daysOff = useMemo(() => {
+    return staffSchedules
+      .filter(s => s.staffId === staffId && s.isDayOff)
+      .map(s => s.date);
+  }, [staffSchedules, staffId]);
+
+  // Generate calendar days
+  const calendarDays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const days: { date: Date; isCurrentMonth: boolean }[] = [];
+    
+    // Add days from previous month to fill the first week
+    const firstDayOfWeek = firstDay.getDay();
+    for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+      const date = new Date(year, month, -i);
+      days.push({ date, isCurrentMonth: false });
+    }
+    
+    // Add days of current month
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+      const date = new Date(year, month, i);
+      days.push({ date, isCurrentMonth: true });
+    }
+    
+    // Add days from next month to fill the last week
+    const remainingDays = 42 - days.length; // 6 rows × 7 days
+    for (let i = 1; i <= remainingDays; i++) {
+      const date = new Date(year, month + 1, i);
+      days.push({ date, isCurrentMonth: false });
+    }
+    
+    return days;
+  }, [currentMonth]);
+
+  const formatDateString = (date: Date) => {
+    return date.toISOString().split('T')[0];
+  };
+
+  const isDateDayOff = (date: Date) => {
+    return daysOff.includes(formatDateString(date));
+  };
+
+  const isPastDate = (date: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return date < today;
+  };
+
+  const toggleDayOff = async (date: Date) => {
+    if (isPastDate(date)) return;
+    
+    const dateString = formatDateString(date);
+    setIsLoading(true);
+    
+    try {
+      if (isDateDayOff(date)) {
+        await removeStaffDayOff(staffId, dateString);
+      } else {
+        await addStaffDayOff(staffId, dateString);
+      }
+    } catch (error) {
+      console.error('Error toggling day off:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  const monthNames = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  ];
+
+  const dayNames = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        กดเลือกวันที่ต้องการให้ <strong>{staffName}</strong> หยุด
+      </p>
+
+      {/* Month Navigation */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={prevMonth}
+          className="p-2 rounded-lg hover:bg-beige-100"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <span className="font-semibold">
+          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear() + 543}
+        </span>
+        <button
+          onClick={nextMonth}
+          className="p-2 rounded-lg hover:bg-beige-100"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {/* Day Headers */}
+        {dayNames.map((day) => (
+          <div key={day} className="text-center text-sm font-medium text-muted-foreground py-2">
+            {day}
+          </div>
+        ))}
+        
+        {/* Calendar Days */}
+        {calendarDays.map(({ date, isCurrentMonth }, index) => {
+          const isDayOff = isDateDayOff(date);
+          const isPast = isPastDate(date);
+          const isToday = formatDateString(date) === formatDateString(new Date());
+          
+          return (
+            <button
+              key={index}
+              onClick={() => toggleDayOff(date)}
+              disabled={isPast || isLoading || !isCurrentMonth}
+              className={`
+                aspect-square rounded-lg text-sm font-medium transition-all
+                ${!isCurrentMonth ? 'text-gray-300' : ''}
+                ${isPast && isCurrentMonth ? 'text-gray-400 cursor-not-allowed' : ''}
+                ${isToday ? 'ring-2 ring-primary' : ''}
+                ${isDayOff && isCurrentMonth ? 'bg-orange-500 text-white' : ''}
+                ${!isDayOff && isCurrentMonth && !isPast ? 'hover:bg-beige-100' : ''}
+              `}
+            >
+              {date.getDate()}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-orange-500"></div>
+          <span>วันหยุด</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-beige-100 border"></div>
+          <span>วันทำงาน</span>
+        </div>
+      </div>
+
+      {/* Days Off Summary */}
+      {daysOff.length > 0 && (
+        <div className="bg-orange-50 rounded-xl p-4">
+          <p className="font-semibold text-orange-800 mb-2">
+            วันหยุดที่เลือก ({daysOff.filter(d => d >= formatDateString(new Date())).length} วัน)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {daysOff
+              .filter(d => d >= formatDateString(new Date()))
+              .sort()
+              .slice(0, 10)
+              .map(date => (
+                <span
+                  key={date}
+                  className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded-lg text-sm"
+                >
+                  {new Date(date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                  <button
+                    onClick={() => removeStaffDayOff(staffId, date)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+            {daysOff.filter(d => d >= formatDateString(new Date())).length > 10 && (
+              <span className="text-sm text-muted-foreground">
+                +{daysOff.filter(d => d >= formatDateString(new Date())).length - 10} วัน
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Button onClick={onClose} className="w-full">
+        เสร็จสิ้น
+      </Button>
     </div>
   );
 }

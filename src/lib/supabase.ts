@@ -40,3 +40,24 @@ export interface DbBookingService {
   service_name: string;
   service_duration: number;
 }
+
+export interface DbStaff {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  role: string;
+  salary_base: number;
+  commission_enabled: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface DbStaffSchedule {
+  id: string;
+  staff_id: string;
+  date: string;
+  is_day_off: boolean;
+  note: string | null;
+  created_at: string;
+}

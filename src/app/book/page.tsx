@@ -21,6 +21,7 @@ import {
 import { Card, Button, Input } from '@/components/ui';
 import { generateTimeSlots, getThaiDayName, isValidThaiPhone } from '@/lib/utils';
 import { useBookingStore, getUnavailableTimes, isTimeSlotAvailable, type Service } from '@/lib/store';
+import { AlertTriangle } from 'lucide-react';
 
 // Generate next 14 days for date selection
 const generateDates = () => {
@@ -39,13 +40,24 @@ const allTimeSlots = generateTimeSlots(8, 22, 30);
 
 export default function CustomerBookingPage() {
   const router = useRouter();
-  const { services, bookings, addBooking, fetchServices, fetchBookings } = useBookingStore();
+  const { 
+    services, 
+    bookings, 
+    addBooking, 
+    fetchServices, 
+    fetchBookings,
+    fetchStaff,
+    fetchStaffSchedules,
+    getZoneCapacity
+  } = useBookingStore();
   const [step, setStep] = useState(1);
   
   useEffect(() => {
     fetchServices();
     fetchBookings();
-  }, [fetchServices, fetchBookings]);
+    fetchStaff();
+    fetchStaffSchedules();
+  }, [fetchServices, fetchBookings, fetchStaff, fetchStaffSchedules]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -87,13 +99,21 @@ export default function CustomerBookingPage() {
     return { from: latestFrom, to: earliestTo };
   };
 
-  // Get unavailable times based on selected date, zone, and total duration
+  // Get zone capacity for selected date
+  const dateString = selectedDate ? selectedDate.toISOString().split('T')[0] : '';
+  const zoneCapacity = selectedDate && selectedZone 
+    ? getZoneCapacity(selectedZone, dateString)
+    : 0;
+
+  // Get unavailable times based on selected date, zone, total duration, and capacity
   const unavailableTimes = selectedDate && selectedZone && selectedServices.length > 0
     ? getUnavailableTimes(
         bookings,
-        selectedDate.toISOString().split('T')[0],
+        dateString,
         selectedZone,
-        totalDuration
+        totalDuration,
+        30,
+        zoneCapacity
       )
     : [];
 
@@ -182,7 +202,7 @@ export default function CustomerBookingPage() {
   const canProceed = () => {
     switch (step) {
       case 1: return selectedServices.length > 0;
-      case 2: return selectedDate !== null && selectedTime !== null;
+      case 2: return selectedDate !== null && selectedTime !== null && zoneCapacity > 0;
       case 3: return customerName.trim() !== '' && isValidThaiPhone(customerPhone);
       default: return false;
     }
@@ -198,12 +218,14 @@ export default function CustomerBookingPage() {
     try {
       // Re-validate time slot availability before submission
       const dateStr = selectedDate.toISOString().split('T')[0];
+      const capacity = getZoneCapacity(selectedZone, dateStr);
       const isAvailable = isTimeSlotAvailable(
         bookings,
         dateStr,
         selectedTime,
         selectedZone,
-        totalDuration
+        totalDuration,
+        capacity
       );
       
       if (!isAvailable) {
@@ -473,36 +495,54 @@ export default function CustomerBookingPage() {
                 <Clock className="w-5 h-5 inline mr-2" />
                 เลือกเวลา
               </label>
-              <div className="grid grid-cols-4 gap-2">
-                {availableTimeSlots.map((time) => {
-                  const isUnavailable = unavailableTimes.includes(time);
-                  const isSelected = selectedTime === time;
-                  return (
-                    <button
-                      key={time}
-                      onClick={() => !isUnavailable && setSelectedTime(time)}
-                      disabled={isUnavailable}
-                      className={`py-3 px-2 rounded-xl text-center font-medium transition-all ${
-                        isSelected
-                          ? 'bg-primary text-white shadow-md'
-                          : isUnavailable
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed line-through'
-                          : 'bg-white border border-border hover:border-primary'
-                      }`}
-                    >
-                      {time}
-                    </button>
-                  );
-                })}
-              </div>
-              {availableTimeSlots.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  ไม่มีเวลาว่างสำหรับบริการนี้
-                </p>
+              
+              {/* Show warning if no staff available */}
+              {zoneCapacity === 0 ? (
+                <Card className="bg-orange-50 border-orange-200">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-6 h-6 text-orange-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-orange-800">ไม่เปิดให้บริการ</p>
+                      <p className="text-sm text-orange-700 mt-1">
+                        วันที่เลือกไม่มีพนักงานพร้อมให้บริการ กรุณาเลือกวันอื่น
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    {availableTimeSlots.map((time) => {
+                      const isUnavailable = unavailableTimes.includes(time);
+                      const isSelected = selectedTime === time;
+                      return (
+                        <button
+                          key={time}
+                          onClick={() => !isUnavailable && setSelectedTime(time)}
+                          disabled={isUnavailable}
+                          className={`py-3 px-2 rounded-xl text-center font-medium transition-all ${
+                            isSelected
+                              ? 'bg-primary text-white shadow-md'
+                              : isUnavailable
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed line-through'
+                              : 'bg-white border border-border hover:border-primary'
+                          }`}
+                        >
+                          {time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {availableTimeSlots.length === 0 && (
+                    <p className="text-center text-muted-foreground py-4">
+                      ไม่มีเวลาว่างสำหรับบริการนี้
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    * เวลาที่ขีดฆ่าคือเวลาที่ไม่ว่าง
+                  </p>
+                </>
               )}
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                * เวลาที่ขีดฆ่าคือเวลาที่ไม่ว่าง
-              </p>
             </div>
           )}
         </div>
