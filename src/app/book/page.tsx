@@ -21,7 +21,8 @@ import {
 import { Card, Button, Input } from '@/components/ui';
 import { generateTimeSlots, getThaiDayName, isValidThaiPhone } from '@/lib/utils';
 import { useBookingStore, getUnavailableTimes, isTimeSlotAvailable, type Service } from '@/lib/store';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Loader2 as LoaderIcon, CreditCard } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 // Generate next 14 days for date selection
 const generateDates = () => {
@@ -73,10 +74,47 @@ export default function CustomerBookingPage() {
   const [slipImage, setSlipImage] = useState<string | null>(null); // For nail zone
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  
+  // QR Code state
+  const [paymentQr, setPaymentQr] = useState<{
+    image: string | null;
+    bankName: string | null;
+    accountName: string | null;
+  }>({ image: null, bankName: null, accountName: null });
+  const [isLoadingQr, setIsLoadingQr] = useState(true);
 
   // Ensure component is mounted before accessing sessionStorage
   useEffect(() => {
     setIsMounted(true);
+  }, []);
+
+  // Fetch QR Code settings
+  useEffect(() => {
+    const fetchQrSettings = async () => {
+      setIsLoadingQr(true);
+      try {
+        const { data, error } = await supabase
+          .from('shop_settings')
+          .select('key, value')
+          .in('key', ['payment_qr_image', 'payment_bank_name', 'payment_account_name']);
+
+        if (error) throw error;
+
+        const qrData: typeof paymentQr = { image: null, bankName: null, accountName: null };
+        data?.forEach(item => {
+          if (item.key === 'payment_qr_image') qrData.image = item.value;
+          if (item.key === 'payment_bank_name') qrData.bankName = item.value;
+          if (item.key === 'payment_account_name') qrData.accountName = item.value;
+        });
+        setPaymentQr(qrData);
+      } catch (error) {
+        console.error('Error fetching QR settings:', error);
+      } finally {
+        setIsLoadingQr(false);
+      }
+    };
+
+    fetchQrSettings();
   }, []);
 
   const dates = generateDates();
@@ -681,16 +719,47 @@ export default function CustomerBookingPage() {
             )}
           </Card>
 
-          {/* Slip Upload - Required for nail zone */}
+          {/* Payment QR Code & Slip Upload - Required for nail zone */}
           {selectedZone === 'nail' && (
-            <Card className={`border-2 ${slipImage ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300' : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-300'}`}>
-              <div className="text-center">
-                <p className={`font-semibold mb-2 ${slipImage ? 'text-green-800' : 'text-amber-800'}`}>
-                  💳 แนบสลิปยืนยันการโอนเงิน <span className="text-red-500">*</span>
-                </p>
-                <p className={`text-sm mb-4 ${slipImage ? 'text-green-700' : 'text-amber-700'}`}>
-                  {slipImage ? '✓ แนบสลิปเรียบร้อยแล้ว' : 'กรุณาโอนเงินมัดจำและแนบสลิป (บังคับ)'}
-                </p>
+            <>
+              {/* QR Code Display */}
+              {isLoadingQr ? (
+                <Card className="flex items-center justify-center py-8">
+                  <LoaderIcon className="w-8 h-8 animate-spin text-primary" />
+                </Card>
+              ) : paymentQr.image ? (
+                <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-200">
+                  <div className="text-center">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <CreditCard className="w-5 h-5 text-emerald-600" />
+                      <p className="font-semibold text-emerald-800">โอนเงินมัดจำ</p>
+                    </div>
+                    
+                    <img 
+                      src={paymentQr.image} 
+                      alt="QR Code ชำระเงิน" 
+                      className="w-48 h-48 mx-auto object-contain rounded-xl border border-emerald-200 bg-white"
+                    />
+                    
+                    {(paymentQr.bankName || paymentQr.accountName) && (
+                      <div className="mt-3 text-sm text-emerald-700">
+                        {paymentQr.bankName && <p>ธนาคาร: <strong>{paymentQr.bankName}</strong></p>}
+                        {paymentQr.accountName && <p>ชื่อบัญชี: <strong>{paymentQr.accountName}</strong></p>}
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              ) : null}
+
+              {/* Slip Upload */}
+              <Card className={`border-2 ${slipImage ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300' : 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-300'}`}>
+                <div className="text-center">
+                  <p className={`font-semibold mb-2 ${slipImage ? 'text-green-800' : 'text-amber-800'}`}>
+                    💳 แนบสลิปยืนยันการโอนเงิน <span className="text-red-500">*</span>
+                  </p>
+                  <p className={`text-sm mb-4 ${slipImage ? 'text-green-700' : 'text-amber-700'}`}>
+                    {slipImage ? '✓ แนบสลิปเรียบร้อยแล้ว' : 'กรุณาโอนเงินมัดจำและแนบสลิป (บังคับ)'}
+                  </p>
                 
                 <input
                   ref={fileInputRef}
@@ -726,6 +795,7 @@ export default function CustomerBookingPage() {
                 )}
               </div>
             </Card>
+            </>
           )}
 
           {/* Error Messages */}

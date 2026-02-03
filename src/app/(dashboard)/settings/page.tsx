@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Settings,
   Clock,
   Calendar,
   DollarSign,
@@ -14,10 +13,16 @@ import {
   Save,
   Share2,
   ExternalLink,
-  Copy
+  Copy,
+  CreditCard,
+  Upload,
+  Trash2,
+  Loader2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Card, Button, Input } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
+import { supabase } from '@/lib/supabase';
 
 // Mock system config
 const initialConfig = {
@@ -37,11 +42,127 @@ export default function SettingsPage() {
   const [config, setConfig] = useState(initialConfig);
   const [isSaving, setIsSaving] = useState(false);
   const [bookingUrl, setBookingUrl] = useState('/book');
+  
+  // QR Code state
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [bankName, setBankName] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [isLoadingQr, setIsLoadingQr] = useState(true);
+  const [isSavingQr, setIsSavingQr] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Set URL after mount to avoid hydration error
   useEffect(() => {
     setBookingUrl(`${window.location.origin}/book`);
   }, []);
+
+  // Fetch QR settings from Supabase
+  useEffect(() => {
+    fetchQrSettings();
+  }, []);
+
+  const fetchQrSettings = async () => {
+    setIsLoadingQr(true);
+    try {
+      const { data, error } = await supabase
+        .from('shop_settings')
+        .select('key, value')
+        .in('key', ['payment_qr_image', 'payment_bank_name', 'payment_account_name']);
+
+      if (error) throw error;
+
+      data?.forEach(item => {
+        if (item.key === 'payment_qr_image') setQrImage(item.value);
+        if (item.key === 'payment_bank_name') setBankName(item.value || '');
+        if (item.key === 'payment_account_name') setAccountName(item.value || '');
+      });
+    } catch (error) {
+      console.error('Error fetching QR settings:', error);
+    } finally {
+      setIsLoadingQr(false);
+    }
+  };
+
+  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('กรุณาเลือกไฟล์รูปภาพ');
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('ไฟล์ใหญ่เกินไป (สูงสุด 2MB)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setQrImage(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveQr = async () => {
+    setIsSavingQr(true);
+    try {
+      // Update all QR settings
+      const updates = [
+        { key: 'payment_qr_image', value: qrImage },
+        { key: 'payment_bank_name', value: bankName },
+        { key: 'payment_account_name', value: accountName },
+      ];
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('shop_settings')
+          .upsert({ key: update.key, value: update.value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+
+        if (error) throw error;
+      }
+
+      alert('บันทึก QR Code สำเร็จ!');
+    } catch (error) {
+      console.error('Error saving QR settings:', error);
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setIsSavingQr(false);
+    }
+  };
+
+  const handleDeleteQr = async () => {
+    if (!confirm('ต้องการลบ QR Code นี้ใช่ไหม?')) return;
+
+    setIsSavingQr(true);
+    try {
+      const updates = [
+        { key: 'payment_qr_image', value: null },
+        { key: 'payment_bank_name', value: null },
+        { key: 'payment_account_name', value: null },
+      ];
+
+      for (const update of updates) {
+        const { error } = await supabase
+          .from('shop_settings')
+          .upsert({ key: update.key, value: update.value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+
+        if (error) throw error;
+      }
+
+      setQrImage(null);
+      setBankName('');
+      setAccountName('');
+      alert('ลบ QR Code สำเร็จ');
+    } catch (error) {
+      console.error('Error deleting QR:', error);
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+    } finally {
+      setIsSavingQr(false);
+    }
+  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -92,6 +213,100 @@ export default function SettingsPage() {
             <ExternalLink className="w-5 h-5" />
           </a>
         </div>
+      </Card>
+
+      {/* QR Code Payment */}
+      <Card>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+            <CreditCard className="w-5 h-5 text-emerald-500" />
+          </div>
+          <div>
+            <h3 className="font-semibold">QR Code รับชำระเงิน</h3>
+            <p className="text-sm text-muted-foreground">แสดงให้ลูกค้าโอนเงินมัดจำ</p>
+          </div>
+        </div>
+
+        {isLoadingQr ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* QR Image Preview */}
+            <div className="flex flex-col items-center">
+              {qrImage ? (
+                <div className="relative">
+                  <img 
+                    src={qrImage} 
+                    alt="QR Code" 
+                    className="w-48 h-48 object-contain rounded-xl border border-border"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-2 right-2 p-2 bg-white rounded-lg shadow-md hover:bg-beige-50"
+                  >
+                    <Upload className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-48 h-48 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-2 hover:border-primary hover:bg-pink-50/50 transition-colors"
+                >
+                  <ImageIcon className="w-12 h-12 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">อัปโหลด QR Code</span>
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleQrImageUpload}
+                className="hidden"
+              />
+            </div>
+
+            {/* Bank Info */}
+            <Input
+              label="ชื่อธนาคาร"
+              placeholder="เช่น กสิกรไทย, ไทยพาณิชย์"
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+            />
+
+            <Input
+              label="ชื่อบัญชี"
+              placeholder="ชื่อ-นามสกุล เจ้าของบัญชี"
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+            />
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              {qrImage && (
+                <Button 
+                  variant="secondary" 
+                  onClick={handleDeleteQr}
+                  disabled={isSavingQr}
+                  className="flex-1"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  ลบ
+                </Button>
+              )}
+              <Button 
+                onClick={handleSaveQr}
+                disabled={isSavingQr || !qrImage}
+                isLoading={isSavingQr}
+                className="flex-1"
+              >
+                <Save className="w-4 h-4" />
+                บันทึก QR
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Shop Hours */}
