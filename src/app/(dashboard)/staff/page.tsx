@@ -146,9 +146,10 @@ export default function StaffPage() {
         setStaff([...staff, data]);
       }
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error saving staff:', error);
-      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      alert('เกิดข้อผิดพลาด: ' + errorMessage);
     }
   };
 
