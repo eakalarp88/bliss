@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -12,11 +12,13 @@ import {
   User,
   Crown,
   Scissors,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { Card, Badge, Button, Input, Avatar, Modal } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency, formatPhone, getRoleText } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 // Staff type
 interface Staff {
@@ -29,17 +31,6 @@ interface Staff {
   commission_enabled: boolean;
   is_active: boolean;
 }
-
-// Mock staff data
-const initialStaff: Staff[] = [
-  { id: '1', name: 'คุณชมพู', phone: '0891234567', email: 'owner@bliss.com', role: 'owner', salary_base: 0, commission_enabled: false, is_active: true },
-  { id: '2', name: 'คุณเบท', phone: '0891234568', email: 'manager@bliss.com', role: 'manager', salary_base: 25000, commission_enabled: true, is_active: true },
-  { id: '3', name: 'พี่หมู', phone: '0891234569', email: null, role: 'hair', salary_base: 18000, commission_enabled: true, is_active: true },
-  { id: '4', name: 'พี่แอน', phone: '0891234570', email: null, role: 'nail', salary_base: 18000, commission_enabled: true, is_active: true },
-  { id: '5', name: 'พี่เอ', phone: '0891234571', email: null, role: 'hair', salary_base: 18000, commission_enabled: true, is_active: true },
-  { id: '6', name: 'น้องมิว', phone: '0891234572', email: null, role: 'reception', salary_base: 15000, commission_enabled: false, is_active: true },
-  { id: '7', name: 'น้องมิ้ว', phone: '0891234573', email: null, role: 'nail', salary_base: 16000, commission_enabled: true, is_active: false },
-];
 
 const roleIcons: Record<string, React.ReactNode> = {
   owner: <Crown className="w-4 h-4 text-amber-500" />,
@@ -58,11 +49,34 @@ const roleBadgeVariants: Record<string, 'warning' | 'info' | 'hair' | 'nail' | '
 };
 
 export default function StaffPage() {
-  const [staff, setStaff] = useState(initialStaff);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [showInactive, setShowInactive] = useState(false);
+
+  // Fetch staff from Supabase
+  useEffect(() => {
+    fetchStaff();
+  }, []);
+
+  const fetchStaff = async () => {
+    setIsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('staff')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setStaff(data || []);
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Filter staff
   const filteredStaff = staff
@@ -73,10 +87,24 @@ export default function StaffPage() {
     );
 
   // Toggle staff active status
-  const toggleStaffStatus = (id: string) => {
-    setStaff(staff.map(s => 
-      s.id === id ? { ...s, is_active: !s.is_active } : s
-    ));
+  const toggleStaffStatus = async (id: string) => {
+    const staffMember = staff.find(s => s.id === id);
+    if (!staffMember) return;
+
+    try {
+      const { error } = await supabase
+        .from('staff')
+        .update({ is_active: !staffMember.is_active })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setStaff(staff.map(s => 
+        s.id === id ? { ...s, is_active: !s.is_active } : s
+      ));
+    } catch (error) {
+      console.error('Error toggling staff status:', error);
+    }
   };
 
   const handleEdit = (staffMember: Staff) => {
@@ -89,27 +117,50 @@ export default function StaffPage() {
     setIsModalOpen(true);
   };
 
-  const handleSave = (staffData: Omit<Staff, 'id' | 'is_active'>) => {
-    if (editingStaff) {
-      // Update existing staff
-      setStaff(staff.map(s => 
-        s.id === editingStaff.id 
-          ? { ...s, ...staffData }
-          : s
-      ));
-    } else {
-      // Add new staff
-      const newStaff: Staff = {
-        ...staffData,
-        id: `${Date.now()}`,
-        is_active: true,
-      };
-      setStaff([...staff, newStaff]);
+  const handleSave = async (staffData: Omit<Staff, 'id' | 'is_active'>) => {
+    try {
+      if (editingStaff) {
+        // Update existing staff
+        const { error } = await supabase
+          .from('staff')
+          .update(staffData)
+          .eq('id', editingStaff.id);
+
+        if (error) throw error;
+
+        setStaff(staff.map(s => 
+          s.id === editingStaff.id 
+            ? { ...s, ...staffData }
+            : s
+        ));
+      } else {
+        // Add new staff
+        const { data, error } = await supabase
+          .from('staff')
+          .insert({ ...staffData, is_active: true })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setStaff([...staff, data]);
+      }
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Error saving staff:', error);
+      alert('เกิดข้อผิดพลาด กรุณาลองใหม่');
     }
-    setIsModalOpen(false);
   };
 
   const activeCount = staff.filter(s => s.is_active).length;
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
@@ -144,6 +195,19 @@ export default function StaffPage() {
         </button>
       </div>
 
+      {/* Empty State */}
+      {staff.length === 0 && (
+        <Card className="text-center py-12">
+          <User className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+          <p className="text-lg font-semibold mb-2">ยังไม่มีพนักงาน</p>
+          <p className="text-muted-foreground mb-4">เพิ่มพนักงานคนแรกของร้านเลย</p>
+          <Button onClick={handleAddNew}>
+            <Plus className="w-5 h-5" />
+            เพิ่มพนักงาน
+          </Button>
+        </Card>
+      )}
+
       {/* Staff List */}
       <div className="space-y-3">
         {filteredStaff.map((staffMember) => (
@@ -160,7 +224,7 @@ export default function StaffPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-lg">{staffMember.name}</p>
-                  <Badge variant={roleBadgeVariants[staffMember.role]} size="sm">
+                  <Badge variant={roleBadgeVariants[staffMember.role] || 'info'} size="sm">
                     {roleIcons[staffMember.role]}
                     <span className="ml-1">{getRoleText(staffMember.role)}</span>
                   </Badge>
@@ -239,18 +303,21 @@ function StaffForm({
   const [role, setRole] = useState(staff?.role || 'hair');
   const [salaryBase, setSalaryBase] = useState(staff?.salary_base?.toString() || '');
   const [commissionEnabled, setCommissionEnabled] = useState(staff?.commission_enabled ?? true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const roles = [
+    { value: 'owner', label: 'เจ้าของร้าน', icon: <Crown className="w-5 h-5" /> },
+    { value: 'manager', label: 'ผู้จัดการ', icon: <User className="w-5 h-5" /> },
     { value: 'hair', label: 'ช่างทำผม', icon: <Scissors className="w-5 h-5" /> },
     { value: 'nail', label: 'ช่างทำเล็บ', icon: <Sparkles className="w-5 h-5" /> },
     { value: 'reception', label: 'พนักงานต้อนรับ', icon: <User className="w-5 h-5" /> },
-    { value: 'manager', label: 'ผู้จัดการ', icon: <User className="w-5 h-5" /> },
   ];
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim() || !phone.trim()) return;
     
-    onSave({
+    setIsSaving(true);
+    await onSave({
       name: name.trim(),
       phone: phone.replace(/\D/g, ''),
       email: email.trim() || null,
@@ -258,6 +325,7 @@ function StaffForm({
       salary_base: parseInt(salaryBase) || 0,
       commission_enabled: commissionEnabled,
     });
+    setIsSaving(false);
   };
 
   const isValid = name.trim() && phone.trim();
@@ -305,7 +373,7 @@ function StaffForm({
               }`}
             >
               {r.icon}
-              <span className="font-medium">{r.label}</span>
+              <span className="font-medium text-sm">{r.label}</span>
             </button>
           ))}
         </div>
@@ -334,10 +402,10 @@ function StaffForm({
       </div>
 
       <div className="flex gap-2 pt-4">
-        <Button variant="secondary" onClick={onCancel} className="flex-1">
+        <Button variant="secondary" onClick={onCancel} className="flex-1" disabled={isSaving}>
           ยกเลิก
         </Button>
-        <Button onClick={handleSubmit} disabled={!isValid} className="flex-1">
+        <Button onClick={handleSubmit} disabled={!isValid || isSaving} isLoading={isSaving} className="flex-1">
           บันทึก
         </Button>
       </div>
