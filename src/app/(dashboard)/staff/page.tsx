@@ -18,8 +18,20 @@ import { Card, Badge, Button, Input, Avatar, Modal } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
 import { formatCurrency, formatPhone, getRoleText } from '@/lib/utils';
 
+// Staff type
+interface Staff {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  role: string;
+  salary_base: number;
+  commission_enabled: boolean;
+  is_active: boolean;
+}
+
 // Mock staff data
-const mockStaff = [
+const initialStaff: Staff[] = [
   { id: '1', name: 'คุณชมพู', phone: '0891234567', email: 'owner@bliss.com', role: 'owner', salary_base: 0, commission_enabled: false, is_active: true },
   { id: '2', name: 'คุณเบท', phone: '0891234568', email: 'manager@bliss.com', role: 'manager', salary_base: 25000, commission_enabled: true, is_active: true },
   { id: '3', name: 'พี่หมู', phone: '0891234569', email: null, role: 'hair', salary_base: 18000, commission_enabled: true, is_active: true },
@@ -46,10 +58,10 @@ const roleBadgeVariants: Record<string, 'warning' | 'info' | 'hair' | 'nail' | '
 };
 
 export default function StaffPage() {
-  const [staff, setStaff] = useState(mockStaff);
+  const [staff, setStaff] = useState(initialStaff);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState<typeof mockStaff[0] | null>(null);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [showInactive, setShowInactive] = useState(false);
 
   // Filter staff
@@ -67,14 +79,7 @@ export default function StaffPage() {
     ));
   };
 
-  // Toggle commission
-  const toggleCommission = (id: string) => {
-    setStaff(staff.map(s => 
-      s.id === id ? { ...s, commission_enabled: !s.commission_enabled } : s
-    ));
-  };
-
-  const handleEdit = (staffMember: typeof mockStaff[0]) => {
+  const handleEdit = (staffMember: Staff) => {
     setEditingStaff(staffMember);
     setIsModalOpen(true);
   };
@@ -82,6 +87,26 @@ export default function StaffPage() {
   const handleAddNew = () => {
     setEditingStaff(null);
     setIsModalOpen(true);
+  };
+
+  const handleSave = (staffData: Omit<Staff, 'id' | 'is_active'>) => {
+    if (editingStaff) {
+      // Update existing staff
+      setStaff(staff.map(s => 
+        s.id === editingStaff.id 
+          ? { ...s, ...staffData }
+          : s
+      ));
+    } else {
+      // Add new staff
+      const newStaff: Staff = {
+        ...staffData,
+        id: `${Date.now()}`,
+        is_active: true,
+      };
+      setStaff([...staff, newStaff]);
+    }
+    setIsModalOpen(false);
   };
 
   const activeCount = staff.filter(s => s.is_active).length;
@@ -190,7 +215,7 @@ export default function StaffPage() {
       >
         <StaffForm 
           staff={editingStaff}
-          onSave={() => setIsModalOpen(false)}
+          onSave={handleSave}
           onCancel={() => setIsModalOpen(false)}
         />
       </Modal>
@@ -204,8 +229,8 @@ function StaffForm({
   onSave, 
   onCancel 
 }: { 
-  staff: typeof mockStaff[0] | null;
-  onSave: () => void;
+  staff: Staff | null;
+  onSave: (data: Omit<Staff, 'id' | 'is_active'>) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(staff?.name || '');
@@ -214,7 +239,6 @@ function StaffForm({
   const [role, setRole] = useState(staff?.role || 'hair');
   const [salaryBase, setSalaryBase] = useState(staff?.salary_base?.toString() || '');
   const [commissionEnabled, setCommissionEnabled] = useState(staff?.commission_enabled ?? true);
-  const [pinCode, setPinCode] = useState('');
 
   const roles = [
     { value: 'hair', label: 'ช่างทำผม', icon: <Scissors className="w-5 h-5" /> },
@@ -224,10 +248,19 @@ function StaffForm({
   ];
 
   const handleSubmit = () => {
-    // TODO: Save to Supabase
-    console.log({ name, phone, email, role, salaryBase, commissionEnabled, pinCode });
-    onSave();
+    if (!name.trim() || !phone.trim()) return;
+    
+    onSave({
+      name: name.trim(),
+      phone: phone.replace(/\D/g, ''),
+      email: email.trim() || null,
+      role,
+      salary_base: parseInt(salaryBase) || 0,
+      commission_enabled: commissionEnabled,
+    });
   };
+
+  const isValid = name.trim() && phone.trim();
 
   return (
     <div className="space-y-4">
@@ -263,6 +296,7 @@ function StaffForm({
           {roles.map((r) => (
             <button
               key={r.value}
+              type="button"
               onClick={() => setRole(r.value)}
               className={`p-3 rounded-xl border-2 flex items-center gap-2 transition-colors ${
                 role === r.value 
@@ -290,7 +324,7 @@ function StaffForm({
           <p className="font-semibold">รับคอมมิชชั่น</p>
           <p className="text-sm text-muted-foreground">เปิดรับค่าคอมจากบริการ</p>
         </div>
-        <button onClick={() => setCommissionEnabled(!commissionEnabled)}>
+        <button type="button" onClick={() => setCommissionEnabled(!commissionEnabled)}>
           {commissionEnabled ? (
             <ToggleRight className="w-10 h-10 text-success" />
           ) : (
@@ -299,23 +333,11 @@ function StaffForm({
         </button>
       </div>
 
-      {!staff && (
-        <Input
-          label="รหัส PIN (4 หลัก)"
-          value={pinCode}
-          onChange={(e) => setPinCode(e.target.value.slice(0, 4))}
-          placeholder="1234"
-          type="password"
-          maxLength={4}
-          hint="ใช้สำหรับเข้าสู่ระบบ"
-        />
-      )}
-
       <div className="flex gap-2 pt-4">
         <Button variant="secondary" onClick={onCancel} className="flex-1">
           ยกเลิก
         </Button>
-        <Button onClick={handleSubmit} className="flex-1">
+        <Button onClick={handleSubmit} disabled={!isValid} className="flex-1">
           บันทึก
         </Button>
       </div>
