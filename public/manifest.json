@@ -1,0 +1,14 @@
+{
+  "name": "Bliss - ระบบจัดการร้านสปา",
+  "short_name": "Bliss",
+  "description": "ระบบจัดการร้านทำผมและทำเล็บ Bliss - จอง, ปิดบิล, ดูรายงาน",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFAF7",
+  "theme_color": "#F5A9B8",
+  "orientation": "portrait",
+  "icons": [],
+  "categories": ["business", "productivity"],
+  "lang": "th",
+  "dir": "ltr"
+}

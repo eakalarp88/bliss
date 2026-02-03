@@ -1,36 +1,164 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bliss - ระบบจัดการร้านทำผมและทำเล็บ 💅💇
 
-## Getting Started
+ระบบจัดการร้านสปาแบบ Mobile-First Web App พัฒนาด้วย Next.js 15 + Tailwind CSS
 
-First, run the development server:
+## 🔗 Quick Links
+
+| หน้า | URL | สำหรับ |
+|------|-----|-------|
+| **หน้าจองลูกค้า** | `/book` | ลูกค้าจองออนไลน์ |
+| **หน้า Admin** | `/` | พนักงาน/เจ้าของ |
+
+## ✨ Features
+
+### 📅 ระบบจองคิว (Booking Engine)
+- จองคิวล่วงหน้าได้ 30 วัน
+- รองรับ Walk-in, LINE, Web
+- แยกโซนผมและเล็บ
+- ระบบมัดจำอัตโนมัติสำหรับโซนเล็บ
+
+### 💰 ระบบบิลและชำระเงิน (Billing & Payments)
+- ปิดบิลหน้างาน
+- รองรับส่วนลด/โปรโมชั่น
+- 1 บิลมีได้หลายบริการ
+- แยกเงินมัดจำออกจากบิลจริง
+
+### 👥 ระบบ CRM (Customer Management)
+- เก็บประวัติลูกค้า
+- ติดตาม No-show
+- ดูยอดใช้จ่ายสะสม
+- ระบบ VIP อัตโนมัติ
+
+### 👨‍💼 ระบบพนักงาน (Staff Management)
+- จัดการตำแหน่งและเงินเดือน
+- เปิด/ปิดสิทธิ์คอมมิชชั่นรายคน
+- PIN Login สำหรับพนักงาน
+
+### 📊 Dashboard & Reports
+- รายได้แยกโซน
+- Top Staff by Revenue
+- สถิติการจอง
+- ลูกค้าใหม่/ประจำ
+
+## 🚀 Getting Started
+
+### 1. ติดตั้ง Dependencies
+
+```bash
+cd bliss
+npm install
+```
+
+### 2. ตั้งค่า Environment Variables
+
+สร้างไฟล์ `.env.local` จาก `.env.local.example`:
+
+```bash
+cp .env.local.example .env.local
+```
+
+แก้ไข `.env.local` ใส่ค่า Supabase ของคุณ:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### 3. สร้าง Database (Supabase)
+
+1. สร้างโปรเจค Supabase ที่ [supabase.com](https://supabase.com)
+2. ไปที่ SQL Editor
+3. Copy และรัน `database/schema.sql`
+
+### 4. รันโปรเจค
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด [http://localhost:3000](http://localhost:3000) ใน browser
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 📱 PWA Support
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+แอปรองรับการติดตั้งเป็น PWA:
 
-## Learn More
+1. เปิดแอปใน Chrome/Safari บนมือถือ
+2. กด "Add to Home Screen"
+3. ใช้งานได้เหมือน Native App
 
-To learn more about Next.js, take a look at the following resources:
+## 🎨 Design System
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Colors
+- **Primary (Pink)**: `#F5A9B8`
+- **Secondary (Beige)**: `#F5E6D3`
+- **Background**: `#FFFAF7`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Typography
+- Font: Noto Sans Thai
+- Base size: 18px (สำหรับผู้สูงอายุ)
+- Touch targets: 48px minimum
 
-## Deploy on Vercel
+## 📁 Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+bliss/
+├── src/
+│   ├── app/
+│   │   ├── (auth)/           # Login pages
+│   │   └── (dashboard)/      # Main app pages
+│   │       ├── bookings/
+│   │       ├── customers/
+│   │       ├── billing/
+│   │       ├── staff/
+│   │       ├── services/
+│   │       ├── reports/
+│   │       └── settings/
+│   ├── components/
+│   │   ├── ui/               # Reusable UI components
+│   │   ├── booking/
+│   │   └── billing/
+│   ├── lib/
+│   │   ├── supabase.ts       # Supabase client
+│   │   └── utils.ts          # Utility functions
+│   └── types/
+│       └── index.ts          # TypeScript types
+├── database/
+│   └── schema.sql            # Supabase schema
+└── public/
+    └── manifest.json         # PWA manifest
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🔐 User Roles
+
+| Role | Permissions |
+|------|-------------|
+| Owner | ทุกอย่าง |
+| Manager | Booking, Bill, Staff |
+| Reception | Booking, Bill |
+| Staff | ดูรายได้ตัวเอง |
+
+## 📝 TODO
+
+- [ ] เพิ่มระบบ Authentication
+- [ ] เชื่อมต่อ LINE Official Account
+- [ ] เพิ่มระบบแจ้งเตือน
+- [ ] Export รายงานเป็น PDF/Excel
+- [ ] เพิ่ม Commission Tier System
+
+## 🛠 Tech Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS 4
+- **Database**: Supabase (PostgreSQL)
+- **Icons**: Lucide React
+- **State**: Zustand
+- **Date**: date-fns
+
+## 📄 License
+
+MIT License - ใช้งานได้ฟรี
+
+---
+
+Made with 💕 for Bliss Salon
