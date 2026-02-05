@@ -3,6 +3,12 @@ import { Metadata } from 'next';
 export const metadata: Metadata = {
   title: 'จองคิว - Bliss Salon',
   description: 'จองคิวทำผมและทำเล็บออนไลน์ที่ Bliss Salon',
+  manifest: '/manifest-book.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'จองคิว Bliss',
+  },
 };
 
 export default function BookingLayout({

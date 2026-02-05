@@ -1,0 +1,15 @@
+{
+  "name": "Bliss - จองคิว",
+  "short_name": "จองคิว Bliss",
+  "description": "จองคิวทำผมและทำเล็บร้าน Bliss",
+  "start_url": "/book",
+  "scope": "/book",
+  "display": "standalone",
+  "background_color": "#FFFAF7",
+  "theme_color": "#F5A9B8",
+  "orientation": "portrait",
+  "icons": [],
+  "categories": ["lifestyle", "beauty"],
+  "lang": "th",
+  "dir": "ltr"
+}
