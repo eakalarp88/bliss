@@ -58,7 +58,8 @@ export default function StaffPage() {
     fetchStaffSchedules, 
     addStaffDayOff, 
     removeStaffDayOff,
-    getStaffDaysOff
+    getStaffDaysOff,
+    fetchStaff: fetchStaffToStore
   } = useBookingStore();
   
   const [staff, setStaff] = useState<LocalStaff[]>([]);
@@ -76,7 +77,8 @@ export default function StaffPage() {
   useEffect(() => {
     fetchStaff();
     fetchStaffSchedules();
-  }, [fetchStaffSchedules]);
+    fetchStaffToStore(); // Also fetch to store for getZoneCapacity
+  }, [fetchStaffSchedules, fetchStaffToStore]);
 
   const fetchStaff = async () => {
     setIsLoading(true);
@@ -119,6 +121,8 @@ export default function StaffPage() {
       setStaff(staff.map(s => 
         s.id === id ? { ...s, is_active: !s.is_active } : s
       ));
+      // Update store for getZoneCapacity
+      fetchStaffToStore();
     } catch (error) {
       console.error('Error toggling staff status:', error);
     }
@@ -168,6 +172,8 @@ export default function StaffPage() {
         setStaff([...staff, data]);
       }
       setIsModalOpen(false);
+      // Update store for getZoneCapacity
+      fetchStaffToStore();
     } catch (error: unknown) {
       console.error('Error saving staff:', error);
       const err = error as { message?: string; code?: string };
