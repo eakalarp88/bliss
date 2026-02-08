@@ -519,10 +519,26 @@ export const useBookingStore = create<BookingStore>((set, get) => ({
   getZoneCapacity: (zone, date) => {
     const { staff, staffSchedules } = get();
     
+    // Default capacity if no staff data
+    const DEFAULT_CAPACITY: Record<'hair' | 'nail', number> = {
+      hair: 1,
+      nail: 2,
+    };
+    
+    // If no staff data loaded yet, use default
+    if (staff.length === 0) {
+      return DEFAULT_CAPACITY[zone];
+    }
+    
     // Get active staff in this zone
     const zoneStaff = staff.filter(
       (s) => s.isActive && s.role === zone
     );
+    
+    // If no staff in this zone, use default
+    if (zoneStaff.length === 0) {
+      return DEFAULT_CAPACITY[zone];
+    }
     
     // Get staff who have day off on this date
     const staffOnDayOff = staffSchedules
