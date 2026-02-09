@@ -19,7 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Card, Button, Input } from '@/components/ui';
-import { generateTimeSlots, getThaiDayName, isValidThaiPhone } from '@/lib/utils';
+import { generateTimeSlots, getThaiDayName, isValidThaiPhone, formatLocalDate } from '@/lib/utils';
 import { useBookingStore, getUnavailableTimes, isTimeSlotAvailable, type Service } from '@/lib/store';
 import { AlertTriangle, Loader2 as LoaderIcon, CreditCard } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -138,7 +138,7 @@ export default function CustomerBookingPage() {
   };
 
   // Get zone capacity for selected date
-  const dateString = selectedDate ? selectedDate.toISOString().split('T')[0] : '';
+  const dateString = selectedDate ? formatLocalDate(selectedDate) : '';
   const zoneCapacity = selectedDate && selectedZone 
     ? getZoneCapacity(selectedZone, dateString)
     : 0;
@@ -255,7 +255,7 @@ export default function CustomerBookingPage() {
     
     try {
       // Re-validate time slot availability before submission
-      const dateStr = selectedDate.toISOString().split('T')[0];
+      const dateStr = formatLocalDate(selectedDate);
       const capacity = getZoneCapacity(selectedZone, dateStr);
       const isAvailable = isTimeSlotAvailable(
         bookings,

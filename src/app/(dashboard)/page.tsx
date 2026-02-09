@@ -14,7 +14,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { Card, Badge, Button } from '@/components/ui';
-import { getZoneIcon } from '@/lib/utils';
+import { getZoneIcon, formatLocalDate } from '@/lib/utils';
 import { useBookingStore, type Booking, type Service } from '@/lib/store';
 
 // Helper to get services array (supports old and new format)
@@ -51,7 +51,7 @@ export default function HomePage() {
   }, [fetchBookings]);
   
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = formatLocalDate(today);
   
   const thaiDate = today.toLocaleDateString('th-TH', {
     weekday: 'long',

@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Card, Button, Input } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
-import { generateTimeSlots, isValidThaiPhone } from '@/lib/utils';
+import { generateTimeSlots, isValidThaiPhone, getTodayString, formatLocalDate } from '@/lib/utils';
 import { useBookingStore, getUnavailableTimes, isTimeSlotAvailable, type Service } from '@/lib/store';
 
 // Mock existing customers for search (would come from backend)
@@ -338,7 +338,7 @@ export default function NewBookingPage() {
               setSelectedDate(e.target.value);
               setSelectedTime('');
             }}
-            min={new Date().toISOString().split('T')[0]}
+            min={getTodayString()}
             leftIcon={<Calendar className="w-5 h-5" />}
           />
 

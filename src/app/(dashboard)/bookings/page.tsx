@@ -17,7 +17,8 @@ import { PageHeader } from '@/components/PageHeader';
 import { 
   getZoneIcon, 
   getStatusText, 
-  getThaiDayName
+  getThaiDayName,
+  formatLocalDate
 } from '@/lib/utils';
 import { useBookingStore, type Booking, type Service } from '@/lib/store';
 
@@ -53,7 +54,7 @@ export default function BookingsPage() {
   }, [fetchBookings]);
 
   // Format date for comparison
-  const selectedDateStr = selectedDate.toISOString().split('T')[0];
+  const selectedDateStr = formatLocalDate(selectedDate);
 
   // Filter bookings
   const filteredBookings = useMemo(() => {

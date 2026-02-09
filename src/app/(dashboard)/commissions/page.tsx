@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Button, Modal, Input, Select } from '@/components/ui';
 import { PageHeader } from '@/components/PageHeader';
-import { formatCurrency, getRoleText } from '@/lib/utils';
+import { formatCurrency, getRoleText, getTodayString } from '@/lib/utils';
 
 // Mock commission rules
 const mockRules = [
@@ -405,7 +405,7 @@ function CommissionRuleForm({
   );
   const [value, setValue] = useState(rule?.value?.toString() || '');
   const [effectiveFrom, setEffectiveFrom] = useState(
-    rule?.effective_from || new Date().toISOString().split('T')[0]
+    rule?.effective_from || getTodayString()
   );
   const [effectiveTo, setEffectiveTo] = useState(rule?.effective_to || '');
 
