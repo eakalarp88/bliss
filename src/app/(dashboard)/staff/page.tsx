@@ -539,6 +539,16 @@ function ScheduleCalendar({
     if (isPastDate(date)) return;
     
     const dateString = formatDateString(date);
+    
+    // Debug log
+    console.log('=== Debug Day Off Toggle ===');
+    console.log('Clicked date object:', date);
+    console.log('date.getDate():', date.getDate());
+    console.log('date.getMonth():', date.getMonth());
+    console.log('date.getFullYear():', date.getFullYear());
+    console.log('formatDateString result:', dateString);
+    console.log('============================');
+    
     setIsLoading(true);
     
     try {
